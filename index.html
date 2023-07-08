@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title></title>
+    <script src="https://preview.babylonjs.com/babylon.js"></script>
+    <script src="https://preview.babylonjs.com/earcut.min.js"></script>
+
+    <style>
+        html,
+        body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    </style>
+
+</head>
+
+<body>
+    <canvas id="renderCanvas"></canvas>
+
+    <script>
+        // https://github.com/HMShannon/landscape-generator/blob/master/src/Components/DiamondSquare.js
+        // https://en.wikipedia.org/wiki/Diamond-square_algorithm
+
+        let n = 7;
+        let roughness = 0.5;
+
+
+        let generateArray = (corner1, corner2, corner3, corner4) => {
+            let pointsArray = [];
+            for (let i = 0; i < (Math.pow(2, n) + 1); i++) {
+                let newRow = [];
+                for (let j = 0; j < (Math.pow(2, n) + 1); j++) {
+                    newRow.push({ z: null });
+                }
+                pointsArray.push(newRow);
+            }
+            pointsArray[0][0].z = corner1;
+            pointsArray[pointsArray.length - 1][0].z = corner2;
+            pointsArray[pointsArray.length - 1][pointsArray.length - 1].z = corner3;
+            pointsArray[0][pointsArray.length - 1].z = corner4;
+            return pointsArray;
+        };
+
+
+        let removeSpikes = (pointsArray) => {
+            for (let i = 0; i < pointsArray.length; i++) {
+                for (let j = 0; j < pointsArray[i].length; j++) {
+                    let adjacentHeights = getAdjacent(pointsArray, i, j);
+                    let averageSurroundingHeight = adjacentHeights.reduce((curr, total) => total += curr) / adjacentHeights.length;
+                    pointsArray[i][j].z = averageSurroundingHeight;
+                }
+            }
+            return pointsArray;
+        };
+
+
+        let calculateZ = (points, pointToCalc, n, pointDistance) => {
+            points = points.filter((point) => point.z !== null);
+            let z = 0;
+            for (let i = 0; i < points.length; i++) {
+                z += points[i].z;
+            }
+            z = z / points.length;
+            let randomAmount;
+            randomAmount = Math.random() * pointDistance * roughness * .7;
+            if (n === 1) {
+                randomAmount *= .8;
+            }
+            if (Math.random() < 0.5) {
+                z -= randomAmount;
+            } else {
+                z += randomAmount;
+            }
+            pointToCalc.z = z;
+        };
+
+
+        let diamondSquare = () => {
+            let corners = [0, 0, 0, 0];
+            corners.forEach((corner, i) => {
+                let val = Math.random() * n * 2;
+                if (Math.random() < .5) {
+                    corners[i] -= val;
+                } else {
+                    corners[i] += val;
+                }
+            });
+
+            let pointsArray = generateArray(...corners);
+            let step = 1;
+            let pointDistance = pointsArray.length - 1;
+
+            while (step < (2 * n + 1)) {
+                if (step % 2 !== 0) { // diamond step, use all 4 points
+                    for (let i = 0; i < pointsArray.length; i += pointDistance) {
+                        for (let j = 0; j < pointsArray[i].length; j += pointDistance) {
+                            if (j + pointDistance >= pointsArray[i].length || i + pointDistance >= pointsArray.length) {
+                                break;
+                            }
+                            let pointsToUse = [];
+                            pointsToUse.push(pointsArray[i][j]); // top left of current square
+                            pointsToUse.push(pointsArray[i][j + pointDistance]);
+                            pointsToUse.push(pointsArray[i + pointDistance][j]);
+                            pointsToUse.push(pointsArray[i + pointDistance][j + pointDistance]); // bottom right of current square
+
+                            calculateZ(pointsToUse, pointsArray[Math.round(i + pointDistance / 2)][Math.round(j + pointDistance / 2)], step, pointDistance);
+                        }
+                    }
+                } else { // square step, use only 3 points if on edge
+                    for (let i = 0; i < pointsArray.length; i += pointDistance) {
+                        for (let j = 0; j < pointsArray[i].length; j += pointDistance) {
+                            let pointsToUse = [];
+                            if (pointsArray[i][j].z !== null) {
+                                continue;
+                            } else {
+                                if (i - pointDistance >= 0) {
+                                    pointsToUse.push(pointsArray[i - pointDistance][j]);
+                                }
+                                if (j + pointDistance < pointsArray.length) {
+                                    pointsToUse.push(pointsArray[i][j + pointDistance]);
+                                }
+                                if (i + pointDistance < pointsArray.length) {
+                                    pointsToUse.push(pointsArray[i + pointDistance][j]);
+                                }
+                                if (j - pointDistance >= 0) {
+                                    pointsToUse.push(pointsArray[i][j - pointDistance]);
+                                }
+                                calculateZ(pointsToUse, pointsArray[i][j], step, pointDistance);
+                            }
+                        }
+                    }
+                }
+                if (step % 2 !== 0) {
+                    pointDistance = pointDistance / 2;
+                }
+                if (pointDistance < 1) {
+                    pointDistance = 1;
+                }
+                step++;
+            }
+
+            // setPoints(removeSpikes(pointsArray));
+            // console.log(pointsArray)
+
+            return pointsArray;
+        };
+
+
+        let getAdjacent = (array, pointI, pointJ) => {
+            let adjacentPoints = [];
+            for (let i = pointI - 1; i <= pointI + 1; i++) {
+                if (i < 0) {
+                    continue;
+                }
+                if (i > array.length - 1) {
+                    break;
+                }
+                for (let j = pointJ - 1; j <= pointJ + 1; j++) {
+                    if (j < 0) {
+                        continue;
+                    }
+                    if ((i === pointI && j === pointJ) || j > array.length - 1) {
+                        continue;
+                    }
+
+                    adjacentPoints.push(array[i][Math.round(j)].z);
+                }
+            }
+            return adjacentPoints;
+        }
+        //
+
+        let canvas = document.getElementById("renderCanvas");
+        let engine = new BABYLON.Engine(canvas, true);
+        let scene = new BABYLON.Scene(engine);
+
+        let camera = new BABYLON.ArcRotateCamera("camera1",
+            BABYLON.Tools.ToRadians(-90 - 60),
+            BABYLON.Tools.ToRadians(90 - 30),
+            200,
+            new BABYLON.Vector3(0, 0, 0), scene);
+        camera.upperBetaLimit = null;
+        camera.lowerBetaLimit = null;
+        camera.attachControl(canvas, true);
+
+        // Licht hinzufügen
+        var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+
+
+        let pointsArray = diamondSquare();
+
+
+        let instanceId = 0;
+        const meshTreeBase = BABYLON.MeshBuilder.CreateSphere("", { diameter: 1, segments: 1 });
+        meshTreeBase.material = new BABYLON.StandardMaterial("mat", scene);
+        meshTreeBase.material.diffuseColor = BABYLON.Color3.Green();
+        meshTreeBase.isVisible = false;
+
+        const meshCloudBase = BABYLON.MeshBuilder.CreateSphere("", { diameter: 1, segments: 9 });
+        meshCloudBase.material = new BABYLON.StandardMaterial("mat", scene)
+        meshCloudBase.material.diffuseColor = BABYLON.Color3.White();
+        // meshCloudBase.material.alpha = 0.8;
+        meshCloudBase.isVisible = false;
+
+        const meshSeaBase = BABYLON.MeshBuilder.CreateSphere("", { diameter: 0.2, segments: 9 });
+        meshSeaBase.material = new BABYLON.StandardMaterial("mat", scene)
+        meshSeaBase.material.diffuseColor = BABYLON.Color3.Teal();
+        meshSeaBase.isVisible = false;
+
+        // const meshSea = BABYLON.MeshBuilder.CreateBox("", {
+        //     width: pointsArray.length,
+        //     depth: pointsArray.length,
+        //     height: 20,
+        //     sideOrientation: BABYLON.Mesh.DOUBLESIDE
+        // });
+        // meshSea.material = new BABYLON.StandardMaterial("mat", scene);
+        // meshSea.material.diffuseColor = BABYLON.Color3.Blue();
+        // meshSea.material.alpha = 0.8;
+        // // meshSea.rotation.x = 0.5 * Math.PI;
+        // meshSea.position.y = -10; // -pointsArray.length * 0.5;
+
+
+        let createTerrain = () => {
+            let paths = [];
+            let len2 = pointsArray.length * 0.5;
+            let pointDistance = 1;
+            for (let i = 0; i < pointsArray.length; i += pointDistance) {
+                let path = [];
+
+                for (let j = 0; j < pointsArray[i].length; j += pointDistance) {
+                    if (Math.random() > 0.7 && pointsArray[i][j].z > 0.1) {
+                        const meshObj = meshTreeBase.createInstance(instanceId++);
+                        meshObj.position.x = i - len2;
+                        meshObj.position.y = pointsArray[i][j].z;
+                        meshObj.position.z = j - len2;
+                        meshObj.scaling.y = pointsArray[i][j].z * Math.random();
+                    }
+
+                    path.push(new BABYLON.Vector3(i - len2, pointsArray[i][j].z, j - len2));
+                }
+
+                paths.push(path)
+            }
+
+            let ribbon = BABYLON.Mesh.CreateRibbon("ribbon", paths, false, false, 0, scene, true, BABYLON.Mesh.DOUBLESIDE);
+            ribbon.material = new BABYLON.StandardMaterial("mat", scene);
+            ribbon.material.diffuseColor = BABYLON.Color3.Gray();
+        }
+
+
+        let createSea = () => {
+            let paths = [];
+            let len2 = pointsArray.length * 0.5;
+            let pointDistance = 1;
+            for (let i = 0; i < pointsArray.length; i += pointDistance) {
+                let path = [];
+
+                for (let j = 0; j < pointsArray[i].length; j += pointDistance) {
+                    // if (Math.random() > 0.7 && pointsArray[i][j].z > 0.1) {
+                    //     const meshObj = meshSeaBase.createInstance(instanceId++);
+                    //     meshObj.position.x = i - len2;
+                    //     meshObj.position.y = pointsArray[i][j].z;
+                    //     meshObj.position.z = j - len2;
+                    //     // meshObj.scaling.y = pointsArray[i][j].z * Math.random();
+                    // }
+
+                    path.push(new BABYLON.Vector3(i - len2, pointsArray[i][j].z, j - len2));
+                }
+
+                paths.push(path)
+            }
+
+            let ribbon = BABYLON.Mesh.CreateRibbon("ribbon", paths, false, false, 0, scene, true, BABYLON.Mesh.DOUBLESIDE);
+            ribbon.material = new BABYLON.StandardMaterial("mat", scene);
+            ribbon.material.diffuseColor = BABYLON.Color3.Teal();
+            ribbon.material.alpha = 0.8;
+
+        }
+
+        let createSky = () => {
+            let paths = [];
+            let len2 = pointsArray.length * 0.5;
+            let pointDistance = 1;
+            for (let i = 0; i < pointsArray.length; i += pointDistance) {
+                for (let j = 0; j < pointsArray[i].length; j += pointDistance) {
+                    if (pointsArray[i][j].z < 0) continue;
+                    const meshObj = meshCloudBase.createInstance(instanceId++);
+                    meshObj.position.x = i - len2 + 2 * (0.5 - Math.random());
+                    meshObj.position.y = 40 + pointsArray[i][j].z + 2 * (0.5 - Math.random());
+                    meshObj.position.z = j - len2 + 2 * (0.5 - Math.random());
+                    let s = pointsArray[i][j].z * Math.random();
+                    meshObj.scaling.set(s, s, s);
+                }
+            }
+        }
+
+        createTerrain();
+
+        roughness = 0.1;
+        pointsArray = diamondSquare();
+        createSea();
+
+        roughness = 0.2;
+        pointsArray = diamondSquare();
+        let skyRibbon = createSky();
+
+
+
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        // Resize the canvas when the window is resized
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+
+    </script>
+
+</body>
+
+</html>
